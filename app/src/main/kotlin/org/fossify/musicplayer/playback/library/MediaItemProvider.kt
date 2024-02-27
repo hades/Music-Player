@@ -12,6 +12,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MediaMetadata.MediaType
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
+import com.google.common.collect.ArrayListMultimap
+import com.google.common.collect.HashMultimap
+import com.google.common.collect.Multimap
 import com.google.common.util.concurrent.MoreExecutors
 import org.fossify.musicplayer.R
 import org.fossify.musicplayer.extensions.*
@@ -54,7 +57,7 @@ internal class MediaItemProvider(private val context: Context) {
     }
 
     private val treeNodes = mutableMapOf<String, MediaItemNode>()
-    private var titleMap: MutableMap<String, MediaItemNode> = mutableMapOf()
+    private var titleMap: Multimap<String, MediaItemNode> = ArrayListMultimap.create()
     private val onReadyListeners = mutableListOf<(Boolean) -> Unit>()
 
     private var state: Int = STATE_CREATED
@@ -117,14 +120,12 @@ internal class MediaItemProvider(private val context: Context) {
         return curRoot
     }
 
-    fun getItemFromSearch(searchQuery: String): MediaItem? {
-        var mediaItem = titleMap[searchQuery]?.item
-        if (mediaItem == null) {
-            val partialMatch = titleMap.keys.find { it.contains(searchQuery) } ?: return null
-            mediaItem = titleMap[partialMatch]?.item
+    fun getItemsFromSearch(searchQuery: String): List<MediaItem> {
+        val mediaItems = titleMap[searchQuery]
+        mediaItems.ifEmpty {
+            return titleMap.entries().filter { it.key.contains(searchQuery) }.map { it.value.item }
         }
-
-        return mediaItem
+        return mediaItems.map { it.item }
     }
 
     fun getDefaultQueue() = getChildren(SMP_TRACKS_ROOT_ID)
@@ -225,7 +226,7 @@ internal class MediaItemProvider(private val context: Context) {
     private fun buildTracks() = with(audioHelper) {
         getAllTracks().forEach { track ->
             addNodeAndChildren(SMP_TRACKS_ROOT_ID, track.toMediaItem())
-            titleMap[track.title.lowercase()] = MediaItemNode(track.toMediaItem())
+            titleMap.put(track.title.lowercase(), MediaItemNode(track.toMediaItem()))
         }
     }
 

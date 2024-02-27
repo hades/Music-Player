@@ -6,7 +6,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.*
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.Futures.immediateFuture
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
@@ -191,7 +193,8 @@ internal fun PlaybackService.getMediaSessionCallback() = object : MediaLibrarySe
     ): ListenableFuture<List<MediaItem>> {
         val items = mediaItems.map { mediaItem ->
             if (mediaItem.requestMetadata.searchQuery != null) {
-                getMediaItemFromSearchQuery(mediaItem.requestMetadata.searchQuery!!)
+                getMediaItemsFromSearchQuery(mediaItem.requestMetadata.searchQuery!!).firstOrNull()
+                    ?: mediaItemProvider.getRandomItem() // TODO(hades): revisit this behaviour
             } else {
                 mediaItemProvider[mediaItem.mediaId] ?: mediaItem
             }
@@ -200,9 +203,33 @@ internal fun PlaybackService.getMediaSessionCallback() = object : MediaLibrarySe
         return Futures.immediateFuture(items)
     }
 
-    private fun getMediaItemFromSearchQuery(query: String): MediaItem {
-        return mediaItemProvider.getItemFromSearch(query.lowercase()) ?: mediaItemProvider.getRandomItem()
+    override fun onSearch(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<Void>> {
+        session.notifySearchResultChanged(browser, query, 1, params)
+        return immediateFuture(LibraryResult.ofVoid(params))
     }
+
+    override fun onGetSearchResult(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        return immediateFuture(
+            LibraryResult.ofItemList(
+                getMediaItemsFromSearchQuery(query),
+                params
+            )
+        )
+    }
+
+    private fun getMediaItemsFromSearchQuery(query: String) = mediaItemProvider.getItemsFromSearch(query.lowercase())
 
     private fun reloadContent() {
         mediaItemProvider.reload()
